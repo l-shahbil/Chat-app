@@ -18,7 +18,7 @@ export default function Home() {
               type="text"
               className="input-field w-full mb-3 border-2 p-2 rounded-md text-right"
               value={username}
-              placeholder='دخل سم لمتسخدم'
+              placeholder='ادخل اسم لمتسخدم'
               required
               onChange={(e) => setUsername(e.target.value)}
             />
