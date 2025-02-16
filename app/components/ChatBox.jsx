@@ -1,108 +1,69 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import supabase from '@/lib/supabaseClient';
+import { useEffect, useRef, useState } from 'react';
+import supabase from '@/lib/supabase';
 import Message from './Message';
 import Input from './Input';
+import { FaUsers } from "react-icons/fa";
 
-const ChatBox = () => {
+export default function ChatBox({ username }) {
+  const messagesEndRef = useRef(null);
   const [messages, setMessages] = useState([]);
-  const [message, setMessage] = useState('');
-  const [username, setUsername] = useState('');
-  const endOfMessagesRef = useRef(null);
+  const [input, setInput] = useState('');
 
   useEffect(() => {
     const fetchMessages = async () => {
       const { data, error } = await supabase
         .from('messages')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: true });
 
-      if (error) {
-        console.error('Error fetching messages:', error);
-      } else {
-        setMessages(data);
-      }
+      if (!error) setMessages(data);
     };
 
     fetchMessages();
 
-    // الاشتراك في التحديثات باستخدام Supabase Realtime
-    const channel = supabase.channel('messages');
-    channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
-      setMessages((prevMessages) => [payload.new, ...prevMessages]);
-    });
+    const subscription = supabase
+      .channel('messages')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+        setMessages((prevMessages) => [...prevMessages, payload.new]);
+      })
+      .subscribe();
 
-    channel.subscribe();
-
-    // إلغاء الاشتراك عند تفكيك المكون
     return () => {
-      channel.unsubscribe();
+      supabase.removeChannel(subscription);
     };
   }, []);
 
   const sendMessage = async () => {
-    if (message.trim() === '' || !username.trim()) return;
+    if (input.trim() === '') return;
 
-    const { data, error } = await supabase
-      .from('messages')
-      .insert([{ content: message, sender: username }]);
+    await supabase.from('messages').insert([{ content: input, sender: username, created_at: new Date() }]);
 
-    if (error) {
-      console.error('Failed to send message:', error);
-    } else {
-      setMessage('');
-    }
-  };
-
-  const handleUsernameSubmit = (e) => {
-    e.preventDefault();
-    if (username.trim()) {
-      setUsername(username);
-    }
+    setInput('');
   };
 
   useEffect(() => {
-    if (endOfMessagesRef.current) {
-      endOfMessagesRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   return (
-    <div className="chat-box">
-      {!username ? (
-        <div className="username-form">
-          <h2 className="text-center font-bold text-xl">Enter your name</h2>
-          <form onSubmit={handleUsernameSubmit} className="flex flex-col space-y-4 mt-4">
-            <input
-              type="text"
-              placeholder="Your Name"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="p-2 border border-gray-300 rounded-lg"
-            />
-            <button type="submit" className="bg-blue-500 text-white py-2 rounded-lg">Enter Chat</button>
-          </form>
+    <div className="chat-container w-full">
+      <div className="chat-header w-full flex gap-4 items-center justify-end">
+        <p className='text-2xl'>
+        غرفة لدردشة
+        </p>
+      <FaUsers className='w-9 h-9'/>
         </div>
-      ) : (
-        <div>
-          <div className="messages">
-            {messages.map((msg) => (
-              <Message key={msg.id} message={msg} />
-            ))}
-            <div ref={endOfMessagesRef}></div>
-          </div>
-          <div className="input-container">
-            <Input
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onSubmit={sendMessage}
-            />
-          </div>
-        </div>
-      )}
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 w-full md:w-1/2 bg-transparent mx-auto">
+        {messages.map((msg, index) => (
+          <Message key={index} message={msg} currentUser={username} />
+        ))}
+        <div ref={messagesEndRef} />
+      </div>
+
+      <Input value={input} onChange={(e) => setInput(e.target.value)} onSubmit={sendMessage} />
     </div>
   );
-};
-
-export default ChatBox;
+}
